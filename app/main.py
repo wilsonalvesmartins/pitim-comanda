@@ -81,6 +81,13 @@ class CloseComandaIn(BaseModel):
     customer_name: str
     comanda_id: Optional[int] = None
 
+class CloseTableIn(BaseModel):
+    table_number: str
+    requester_name: Optional[str] = "Cliente da Mesa"
+
+class AdminCloseTableIn(BaseModel):
+    payment_method: Optional[str] = "PIX"
+
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -421,6 +428,82 @@ async def request_close_comanda(payload: CloseComandaIn):
         "customer_name": cust_name
     }
 
+@app.post("/api/comanda/fechar-mesa")
+async def request_close_table(payload: CloseTableIn):
+    table_num = payload.table_number.strip()
+    req_name = (payload.requester_name or "Cliente").strip()
+    
+    if not table_num:
+        raise HTTPException(status_code=400, detail="Mesa não informada.")
+
+    cutoff = get_12h_cutoff()
+    now_iso = get_now_iso()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, customer_name, status FROM comandas
+            WHERE LOWER(TRIM(table_number)) = LOWER(?)
+              AND created_at >= ?
+              AND status IN ('open', 'closing_requested')
+        """, (table_num, cutoff))
+        
+        comandas = cursor.fetchall()
+        if not comandas:
+            raise HTTPException(status_code=404, detail="Não há comandas abertas nesta mesa nas últimas 12 horas.")
+
+        comanda_ids = [c["id"] for c in comandas]
+        customers = [c["customer_name"] for c in comandas]
+
+        placeholders = ','.join(['?'] * len(comanda_ids))
+        cursor.execute(f"""
+            UPDATE comandas SET status = 'closing_requested', updated_at = ?
+            WHERE id IN ({placeholders})
+        """, [now_iso] + comanda_ids)
+
+        cursor.execute(f"""
+            SELECT SUM(oi.subtotal) as total
+            FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id
+            WHERE o.comanda_id IN ({placeholders})
+        """, comanda_ids)
+        total_row = cursor.fetchone()
+        table_total = float(total_row["total"] or 0.0)
+
+        cursor.execute("""
+            INSERT INTO notifications (type, title, message, table_number, customer_name, created_at)
+            VALUES ('close_table', ?, ?, ?, ?, ?)
+        """, (
+            f"FECHAR MESA - {table_num}",
+            f"{req_name} solicitou fechar a mesa com {len(comandas)} comanda(s) ({', '.join(customers)}). Total R$ {table_total:.2f}.",
+            table_num,
+            req_name,
+            now_iso
+        ))
+
+        conn.commit()
+
+    await manager.broadcast({
+        "event": "close_table",
+        "sound": True,
+        "priority": "HIGH",
+        "table_number": table_num,
+        "requester_name": req_name,
+        "comandas_count": len(comandas),
+        "customers": customers,
+        "total": round(table_total, 2),
+        "timestamp": now_iso
+    })
+
+    return {
+        "success": True,
+        "message": f"Solicitação para fechar a {table_num} enviada com sucesso! O garçom está a caminho.",
+        "table_number": table_num,
+        "total": round(table_total, 2),
+        "comandas_count": len(comandas)
+    }
+
 # -------------------------------------------------------------
 # Admin Master Authentication
 # -------------------------------------------------------------
@@ -668,6 +751,73 @@ async def update_comanda_status(comanda_id: int, payload: ComandaStatusIn, is_ad
     })
 
     return {"success": True, "comanda_id": comanda_id, "status": new_status}
+
+@app.post("/api/admin/table/{table_number}/close")
+async def admin_close_table(table_number: str, payload: AdminCloseTableIn, is_admin: bool = Depends(get_current_admin)):
+    table_num = table_number.strip()
+    pay_method = payload.payment_method or "PIX"
+    cutoff = get_12h_cutoff()
+    now_iso = get_now_iso()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, customer_name FROM comandas
+            WHERE LOWER(TRIM(table_number)) = LOWER(?)
+              AND created_at >= ?
+              AND status IN ('open', 'closing_requested')
+        """, (table_num, cutoff))
+        rows = cursor.fetchall()
+        if not rows:
+            raise HTTPException(status_code=404, detail="Nenhuma comanda ativa encontrada para esta mesa.")
+
+        comanda_ids = [r["id"] for r in rows]
+        customers = [r["customer_name"] for r in rows]
+        placeholders = ','.join(['?'] * len(comanda_ids))
+
+        cursor.execute(f"""
+            SELECT SUM(oi.subtotal) as total
+            FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id
+            WHERE o.comanda_id IN ({placeholders})
+        """, comanda_ids)
+        total_row = cursor.fetchone()
+        table_total = float(total_row["total"] or 0.0)
+
+        cursor.execute(f"""
+            UPDATE comandas
+            SET status = 'paid', payment_method = ?, updated_at = ?, closed_at = ?
+            WHERE id IN ({placeholders})
+        """, [pay_method, now_iso, now_iso] + comanda_ids)
+
+        cursor.execute("""
+            INSERT INTO notifications (type, title, message, table_number, customer_name, created_at)
+            VALUES ('table_settled', ?, ?, ?, ?, ?)
+        """, (
+            f"Mesa {table_num} Finalizada",
+            f"Mesa encerrada com sucesso ({len(comanda_ids)} comandas quitadas - R$ {table_total:.2f} via {pay_method}).",
+            table_num,
+            "Master",
+            now_iso
+        ))
+
+        conn.commit()
+
+    await manager.broadcast({
+        "event": "table_closed",
+        "table_number": table_num,
+        "payment_method": pay_method,
+        "total": round(table_total, 2),
+        "comandas_count": len(comanda_ids)
+    })
+
+    return {
+        "success": True,
+        "message": f"{table_num} encerrada com sucesso ({len(comanda_ids)} comandas quitadas via {pay_method}).",
+        "table_number": table_num,
+        "total": round(table_total, 2),
+        "comandas_closed": len(comanda_ids)
+    }
 
 @app.post("/api/admin/order-item/{item_id}/status")
 async def update_item_status(item_id: int, payload: ItemStatusIn, is_admin: bool = Depends(get_current_admin)):

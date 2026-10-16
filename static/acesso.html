@@ -363,6 +363,59 @@
         </div>
     </div>
 
+    <!-- MODAL: Fechar Mesa Completa (Garçom / Master) -->
+    <div id="close-table-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-[#181b22] border border-pitim-border rounded-2xl w-full max-w-md p-5 shadow-2xl">
+            <div class="flex items-center justify-between mb-3 border-b border-pitim-border/60 pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-cash-register text-pitim-gold text-xl"></i>
+                    <h3 class="font-display font-bold text-lg text-white" id="close-table-title">Fechar Mesa</h3>
+                </div>
+                <button onclick="closeCloseTableModal()" class="text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="bg-[#12141a] p-4 rounded-xl border border-pitim-border mb-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-bold uppercase tracking-wider">Total Acumulado da Mesa:</span>
+                    <span class="text-2xl font-black text-pitim-gold font-display" id="close-table-total">R$ 0,00</span>
+                </div>
+                <div class="mt-3 pt-3 border-t border-pitim-border/50">
+                    <p class="text-[11px] font-bold text-gray-300 uppercase mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-users text-pitim-gold"></i> Comandas a quitar nesta mesa:
+                    </p>
+                    <div id="close-table-comandas-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                        <!-- Injected: Person name + total -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-3 mb-5">
+                <label class="block text-xs font-bold text-gray-300">Forma de Pagamento da Mesa:</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+                    <button onclick="selectTablePayMethod('PIX')" class="table-pay-btn p-3 rounded-xl bg-[#12141a] border border-pitim-gold text-white flex flex-col items-center gap-1.5 transition">
+                        <i class="fa-brands fa-pix text-emerald-400 text-lg"></i> PIX
+                    </button>
+                    <button onclick="selectTablePayMethod('Cartão de Débito')" class="table-pay-btn p-3 rounded-xl bg-[#12141a] border border-pitim-border hover:border-pitim-gold text-white flex flex-col items-center gap-1.5 transition">
+                        <i class="fa-solid fa-credit-card text-blue-400 text-lg"></i> Débito
+                    </button>
+                    <button onclick="selectTablePayMethod('Cartão de Crédito')" class="table-pay-btn p-3 rounded-xl bg-[#12141a] border border-pitim-border hover:border-pitim-gold text-white flex flex-col items-center gap-1.5 transition">
+                        <i class="fa-regular fa-credit-card text-purple-400 text-lg"></i> Crédito
+                    </button>
+                    <button onclick="selectTablePayMethod('Dinheiro')" class="table-pay-btn p-3 rounded-xl bg-[#12141a] border border-pitim-border hover:border-pitim-gold text-white flex flex-col items-center gap-1.5 transition">
+                        <i class="fa-solid fa-money-bill-wave text-emerald-500 text-lg"></i> Dinheiro
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="confirmCloseTable()" id="btn-confirm-close-table" class="w-full gold-gradient text-black font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition transform active:scale-95">
+                <i class="fa-solid fa-check-double text-sm"></i>
+                <span id="btn-confirm-close-table-text">Confirmar Pagamento e Fechar Mesa</span>
+            </button>
+        </div>
+    </div>
+
     <!-- MODAL: Novo Item / Editar Produto -->
     <div id="product-crud-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
         <div class="bg-[#181b22] border border-pitim-border rounded-2xl w-full max-w-md p-5 shadow-2xl">
@@ -660,9 +713,14 @@
                             <p class="text-xs text-gray-300">Cliente: <b>${c.customer_name}</b> • Total: <b class="text-pitim-gold">${formatMoney(c.total_amount)}</b></p>
                         </div>
                     </div>
-                    <button onclick="openPayModal(${c.id}, '${c.table}', '${c.customer_name}', ${c.total_amount})" class="gold-gradient text-black font-bold text-xs px-4 py-2 rounded-xl shadow-lg shrink-0">
-                        Receber Agora
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="openPayModal(${c.id}, '${c.table}', '${c.customer_name}', ${c.total_amount})" class="bg-[#181b22] hover:bg-[#222733] text-gray-200 border border-pitim-border font-bold text-xs px-3 py-2 rounded-xl transition">
+                            Receber Este
+                        </button>
+                        <button onclick="openCloseTableModal('${c.table}')" class="gold-gradient text-black font-extrabold text-xs px-4 py-2 rounded-xl shadow-lg shrink-0 flex items-center gap-1.5 transition active:scale-95">
+                            <i class="fa-solid fa-cash-register"></i> Fechar Mesa
+                        </button>
+                    </div>
                 </div>
             `).join('');
         }
@@ -725,8 +783,11 @@
 
                         <!-- Bottom action -->
                         <div class="pt-2 border-t border-pitim-border flex items-center justify-between gap-2">
-                            <button onclick="openManualOrderForTable('${t.table_number}')" class="flex-1 bg-[#222834] hover:bg-[#2c3444] text-white text-xs font-bold py-2 px-3 rounded-xl border border-pitim-border flex items-center justify-center gap-1.5 transition">
+                            <button onclick="openManualOrderForTable('${t.table_number}')" class="flex-1 bg-[#222834] hover:bg-[#2c3444] text-white text-xs font-bold py-2.5 px-3 rounded-xl border border-pitim-border flex items-center justify-center gap-1.5 transition">
                                 <i class="fa-solid fa-plus text-[10px] text-pitim-gold"></i> Adicionar Item
+                            </button>
+                            <button onclick="openCloseTableModal('${t.table_number}')" class="flex-1 ${hasClosing ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white animate-pulse' : 'gold-gradient text-black'} text-xs font-bold py-2.5 px-3 rounded-xl shadow flex items-center justify-center gap-1.5 transition transform active:scale-95">
+                                <i class="fa-solid fa-cash-register text-xs"></i> Fechar Mesa
                             </button>
                         </div>
                     </div>
@@ -870,6 +931,85 @@
             } finally {
                 btn.disabled = false;
                 btn.innerText = "Confirmar Pagamento & Fechar";
+            }
+        }
+
+        // Close Entire Table Logic
+        let closingTable = null;
+        let selectedTablePayMethod = "PIX";
+
+        function openCloseTableModal(tableNumber) {
+            const table = activeTablesData.find(t => t.table_number.toLowerCase().trim() === tableNumber.toLowerCase().trim());
+            if (!table) return;
+
+            closingTable = table;
+            selectedTablePayMethod = "PIX";
+            selectTablePayMethod("PIX");
+
+            document.getElementById('close-table-title').innerText = `Fechar ${table.table_number}`;
+            document.getElementById('close-table-total').innerText = formatMoney(table.table_total);
+
+            const list = document.getElementById('close-table-comandas-list');
+            list.innerHTML = table.comandas.map(c => `
+                <div class="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-[#181b22] border border-pitim-border/60">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-user text-pitim-gold text-[10px]"></i>
+                        <span class="text-white font-semibold">${c.customer_name}</span>
+                        ${c.status === 'closing_requested' ? '<span class="text-[9px] bg-red-500/30 text-red-400 px-1.5 py-0.5 rounded font-extrabold border border-red-500/40 animate-pulse">Solicitou</span>' : ''}
+                    </div>
+                    <span class="text-pitim-gold font-bold">${formatMoney(c.total_amount)}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('btn-confirm-close-table-text').innerText = `Confirmar Pagamento e Fechar ${table.table_number}`;
+            document.getElementById('close-table-modal').classList.remove('hidden');
+        }
+
+        function closeCloseTableModal() {
+            document.getElementById('close-table-modal').classList.add('hidden');
+            closingTable = null;
+        }
+
+        function selectTablePayMethod(method) {
+            selectedTablePayMethod = method;
+            document.querySelectorAll('.table-pay-btn').forEach(btn => {
+                if (btn.innerText.includes(method)) {
+                    btn.classList.add('border-pitim-gold', 'bg-pitim-gold/15');
+                    btn.classList.remove('border-pitim-border');
+                } else {
+                    btn.classList.remove('border-pitim-gold', 'bg-pitim-gold/15');
+                    btn.classList.add('border-pitim-border');
+                }
+            });
+        }
+
+        async function confirmCloseTable() {
+            if (!closingTable) return;
+            const btn = document.getElementById('btn-confirm-close-table');
+            const btnText = document.getElementById('btn-confirm-close-table-text');
+            btn.disabled = true;
+            btnText.innerText = "Encerrando mesa...";
+
+            try {
+                const res = await fetch(`/api/admin/table/${encodeURIComponent(closingTable.table_number)}/close`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        payment_method: selectedTablePayMethod
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    closeCloseTableModal();
+                    loadActiveTables();
+                } else {
+                    alert(data.detail || "Erro ao fechar mesa.");
+                }
+            } catch (err) {
+                alert("Erro de conexão ao fechar mesa.");
+            } finally {
+                btn.disabled = false;
+                btnText.innerText = `Confirmar Pagamento e Fechar Mesa`;
             }
         }
 
