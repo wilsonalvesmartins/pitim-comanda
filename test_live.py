@@ -2,7 +2,7 @@ import requests
 import json
 import sys
 
-base = "http://pitim.187.77.41.37.sslip.io"
+base = "http://comanda-pitim.187.77.41.37.sslip.io"
 
 try:
     print("1. Getting products from live menu...")
